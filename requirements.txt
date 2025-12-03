@@ -1,0 +1,17 @@
+# Web framework
+Flask==3.0.3
+flask-cors==4.0.0
+
+# OpenAI + LangChain client
+langchain-openai==0.1.22
+
+# MongoDB client
+pymongo==4.10.1
+
+# Environment variables
+python-dotenv==1.0.1
+
+# Logging utils (RotatingFileHandler is from stdlib, no extra lib needed)
+
+# Production server (optional but recommended)
+gunicorn==23.0.0
