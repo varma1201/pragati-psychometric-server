@@ -1,6 +1,7 @@
 """
 User Profile Manager
-Creates and manages entrepreneur profiles based on psychometric assessments
+
+Creates and manages entrepreneur and mentor profiles based on psychometric assessments
 Integrates profiles with idea validation for personalized recommendations
 """
 
@@ -15,20 +16,22 @@ logger = logging.getLogger(__name__)
 class UserProfileManager:
     """
     Manages user profiles created from psychometric assessments
+    Supports both entrepreneur and mentor profiles
     Provides profile-aware validation recommendations
     """
-    
+
     def __init__(self):
         """Initialize the user profile manager"""
         self.db_manager = get_database_manager()
         if not self.db_manager:
             logger.warning("Database manager not available - profiles will not be persisted")
         logger.info("User Profile Manager initialized")
-    
+
     def create_profile_from_psychometric(
         self,
         user_id: str,
-        evaluation_result: Dict
+        evaluation_result: Dict,
+        user_type: str = 'entrepreneur'  # NEW PARAMETER
     ) -> Dict:
         """
         Create or update user profile from psychometric evaluation
@@ -36,23 +39,42 @@ class UserProfileManager:
         Args:
             user_id: Unique user identifier
             evaluation_result: Complete psychometric evaluation result
-            
+            user_type: 'entrepreneur' or 'mentor'
+        
         Returns:
             User profile dictionary
         """
         try:
-            logger.info(f"Creating profile for user: {user_id}")
+            logger.info(f"Creating {user_type} profile for user: {user_id}")
+            print(f"\n📝 Creating {user_type.upper()} profile...")
             
+            if user_type == 'mentor':
+                return self._create_mentor_profile(user_id, evaluation_result)
+            else:
+                return self._create_entrepreneur_profile(user_id, evaluation_result)
+        
+        except Exception as e:
+            logger.error(f"Failed to create {user_type} profile: {e}")
+            raise
+
+    def _create_entrepreneur_profile(
+        self,
+        user_id: str,
+        evaluation_result: Dict
+    ) -> Dict:
+        """Create entrepreneur profile from psychometric evaluation"""
+        try:
             # Extract key information from evaluation
             dimension_scores = evaluation_result.get('dimension_scores', {})
             entrepreneurial_fit = evaluation_result.get('entrepreneurial_fit', {})
             strengths = evaluation_result.get('strengths', [])
             weaknesses = evaluation_result.get('areas_for_development', [])
             personality_profile = evaluation_result.get('personality_profile', '')
-            
+
             # Calculate profile metadata
             profile = {
                 "user_id": user_id,
+                "profile_type": "entrepreneur",
                 "user_name": evaluation_result.get('user_name', 'Unknown'),
                 "created_at": datetime.now().isoformat(),
                 "last_updated": datetime.now().isoformat(),
@@ -92,68 +114,171 @@ class UserProfileManager:
                 "evaluation_id": evaluation_result.get('evaluation_id'),
                 "assessment_date": evaluation_result.get('evaluated_at')
             }
-            
+
             # Save to database
             if self.db_manager is not None and self.db_manager.db is not None:
                 try:
                     # Check if profile exists
-                    existing_profile = self.db_manager.db.user_profiles.find_one(
+                    existing_profile = self.db_manager.db.entrepreneur_profiles.find_one(
                         {"user_id": user_id}
                     )
-                    
+
                     if existing_profile:
                         # Update existing profile
                         profile['created_at'] = existing_profile.get('created_at')
                         profile['validation_history'] = existing_profile.get('validation_history', [])
-                        
-                        self.db_manager.db.user_profiles.update_one(
+                        self.db_manager.db.entrepreneur_profiles.update_one(
                             {"user_id": user_id},
                             {"$set": profile}
                         )
-                        logger.info(f"Updated existing profile for user: {user_id}")
+                        logger.info(f"Updated existing entrepreneur profile for user: {user_id}")
                     else:
                         # Create new profile
                         profile['validation_history'] = []
-                        self.db_manager.db.user_profiles.insert_one(profile)
-                        logger.info(f"Created new profile for user: {user_id}")
-                
+                        self.db_manager.db.entrepreneur_profiles.insert_one(profile)
+                        logger.info(f"Created new entrepreneur profile for user: {user_id}")
                 except Exception as e:
-                    logger.error(f"Failed to save profile to database: {e}")
-            
+                    logger.error(f"Failed to save entrepreneur profile to database: {e}")
+
             return profile
-            
+
         except Exception as e:
-            logger.error(f"Failed to create profile: {e}")
+            logger.error(f"Failed to create entrepreneur profile: {e}")
             raise
-    
-    def get_profile(self, user_id: str) -> Optional[Dict]:
+
+    def _create_mentor_profile(
+        self,
+        user_id: str,
+        evaluation_result: Dict
+    ) -> Dict:
+        """Create mentor profile from psychometric evaluation"""
+        try:
+            # Extract key information from mentor evaluation
+            dimension_scores = evaluation_result.get('dimension_scores', {})
+            mentoring_fit = evaluation_result.get('mentoring_fit', {})
+            strengths = evaluation_result.get('mentor_strengths', evaluation_result.get('strengths', []))
+            development_areas = evaluation_result.get('development_areas', [])
+            mentor_profile_summary = evaluation_result.get('mentor_profile_summary', '')
+            teaching_style = evaluation_result.get('teaching_style', '')
+            ideal_mentee_profile = evaluation_result.get('ideal_mentee_profile', {})
+            mentoring_capacity = evaluation_result.get('mentoring_capacity', '')
+            expertise_domains = evaluation_result.get('expertise_domains', [])
+
+            # Calculate profile metadata
+            profile = {
+                "user_id": user_id,
+                "profile_type": "mentor",
+                "user_name": evaluation_result.get('user_name', 'Unknown'),
+                "created_at": datetime.now().isoformat(),
+                "last_updated": datetime.now().isoformat(),
+                
+                # Psychometric scores (mentor-specific)
+                "psychometric_scores": dimension_scores,
+                "overall_mentor_score": evaluation_result.get('overall_mentor_score', 0),
+                
+                # Mentoring assessment
+                "mentoring_fit": mentoring_fit.get('overall_fit', 'Moderate'),
+                "fit_score": mentoring_fit.get('fit_score', 50),
+                "mentoring_readiness": mentoring_fit.get('mentoring_readiness', 'Needs Development'),
+                
+                # Teaching approach
+                "teaching_style": teaching_style,
+                "mentoring_capacity": mentoring_capacity,
+                "expertise_domains": expertise_domains,
+                
+                # Strengths and development areas
+                "top_strengths": strengths[:5] if isinstance(strengths, list) else [],
+                "development_areas": development_areas[:5] if isinstance(development_areas, list) else [],
+                
+                # Profile summary
+                "mentor_profile_summary": mentor_profile_summary,
+                
+                # Ideal mentee matching
+                "ideal_mentee_profile": ideal_mentee_profile,
+                "mentee_experience_level": ideal_mentee_profile.get('experience_level', ''),
+                "mentee_personality_fit": ideal_mentee_profile.get('personality_fit', ''),
+                "challenge_areas": ideal_mentee_profile.get('challenge_areas', ''),
+                "industry_fit": ideal_mentee_profile.get('industry_fit', ''),
+                
+                # Recommendations context
+                "detailed_insights": evaluation_result.get('detailed_insights', {}),
+                "recommendations": evaluation_result.get('recommendations', []),
+                
+                # Profile status
+                "profile_completeness": self._calculate_completeness(evaluation_result),
+                "profile_version": "1.0",
+                
+                # Reference to evaluation
+                "evaluation_id": evaluation_result.get('evaluation_id'),
+                "assessment_date": evaluation_result.get('evaluated_at'),
+                
+                # Mentoring history
+                "mentoring_history": []
+            }
+
+            # Save to database
+            if self.db_manager is not None and self.db_manager.db is not None:
+                try:
+                    # Check if profile exists
+                    existing_profile = self.db_manager.db.mentor_profiles.find_one(
+                        {"user_id": user_id}
+                    )
+
+                    if existing_profile:
+                        # Update existing profile
+                        profile['created_at'] = existing_profile.get('created_at')
+                        profile['mentoring_history'] = existing_profile.get('mentoring_history', [])
+                        self.db_manager.db.mentor_profiles.update_one(
+                            {"user_id": user_id},
+                            {"$set": profile}
+                        )
+                        logger.info(f"Updated existing mentor profile for user: {user_id}")
+                        print(f"✅ Updated existing mentor profile in database")
+                    else:
+                        # Create new profile
+                        self.db_manager.db.mentor_profiles.insert_one(profile)
+                        logger.info(f"Created new mentor profile for user: {user_id}")
+                        print(f"✅ Created new mentor profile in database")
+                except Exception as e:
+                    logger.error(f"Failed to save mentor profile to database: {e}")
+                    print(f"❌ Failed to save mentor profile: {e}")
+
+            return profile
+
+        except Exception as e:
+            logger.error(f"Failed to create mentor profile: {e}")
+            raise
+
+    def get_profile(self, user_id: str, user_type: str = 'entrepreneur') -> Optional[Dict]:
         """
         Retrieve user profile
         
         Args:
             user_id: Unique user identifier
-            
+            user_type: 'entrepreneur' or 'mentor'
+        
         Returns:
             User profile or None if not found
         """
         try:
             if self.db_manager is None or self.db_manager.db is None:
                 return None
-            
-            profile = self.db_manager.db.user_profiles.find_one({"user_id": user_id})
+
+            collection_name = 'mentor_profiles' if user_type == 'mentor' else 'entrepreneur_profiles'
+            profile = self.db_manager.db[collection_name].find_one({"user_id": user_id})
             
             if profile:
                 profile['_id'] = str(profile['_id'])
-                logger.info(f"Retrieved profile for user: {user_id}")
+                logger.info(f"Retrieved {user_type} profile for user: {user_id}")
                 return profile
             else:
-                logger.info(f"No profile found for user: {user_id}")
+                logger.info(f"No {user_type} profile found for user: {user_id}")
                 return None
-                
+
         except Exception as e:
-            logger.error(f"Failed to retrieve profile: {e}")
+            logger.error(f"Failed to retrieve {user_type} profile: {e}")
             return None
-    
+
     def add_validation_to_history(
         self,
         user_id: str,
@@ -162,7 +287,7 @@ class UserProfileManager:
         report_id: str
     ):
         """
-        Add validation result to user's history
+        Add validation result to entrepreneur's history
         
         Args:
             user_id: Unique user identifier
@@ -173,7 +298,7 @@ class UserProfileManager:
         try:
             if self.db_manager is None or self.db_manager.db is None:
                 return
-            
+
             validation_entry = {
                 "idea_name": idea_name,
                 "report_id": report_id,
@@ -181,39 +306,38 @@ class UserProfileManager:
                 "overall_score": validation_result.get('overall_score', 0),
                 "validation_outcome": validation_result.get('validation_outcome', 'N/A')
             }
-            
-            self.db_manager.db.user_profiles.update_one(
+
+            self.db_manager.db.entrepreneur_profiles.update_one(
                 {"user_id": user_id},
                 {
                     "$push": {"validation_history": validation_entry},
                     "$set": {"last_updated": datetime.now().isoformat()}
                 }
             )
-            
             logger.info(f"Added validation to history for user: {user_id}")
-            
+
         except Exception as e:
             logger.error(f"Failed to add validation to history: {e}")
-    
+
     def get_personalized_validation_context(self, user_id: str) -> Dict:
         """
         Get personalized context for idea validation based on user profile
         
         Args:
             user_id: Unique user identifier
-            
+        
         Returns:
             Context dictionary for validation customization
         """
         try:
-            profile = self.get_profile(user_id)
+            profile = self.get_profile(user_id, user_type='entrepreneur')
             
             if not profile:
                 return {
                     "has_profile": False,
                     "message": "No psychometric profile available. Standard validation will be performed."
                 }
-            
+
             # Build personalized context
             context = {
                 "has_profile": True,
@@ -246,29 +370,29 @@ class UserProfileManager:
                 "validation_count": len(profile.get('validation_history', [])),
                 "previous_ideas": [v.get('idea_name') for v in profile.get('validation_history', [])[-3:]]
             }
-            
+
             logger.info(f"Generated personalized context for user: {user_id}")
             return context
-            
+
         except Exception as e:
             logger.error(f"Failed to generate personalized context: {e}")
             return {
                 "has_profile": False,
                 "error": str(e)
             }
-    
+
     def _determine_focus_areas(self, dimension_scores: Dict) -> List[str]:
         """
         Determine which validation areas need extra focus based on weak dimensions
         
         Args:
             dimension_scores: Dictionary of dimension scores
-            
+        
         Returns:
             List of focus areas for validation
         """
         focus_areas = []
-        
+
         # Map dimensions to validation focus areas
         dimension_to_focus = {
             'leadership': 'Team & Leadership Evaluation',
@@ -282,28 +406,28 @@ class UserProfileManager:
             'communication': 'Go-to-Market & Sales',
             'problem_solving': 'Problem-Solution Fit'
         }
-        
+
         # Identify weak dimensions (score < 5)
         for dimension, score in dimension_scores.items():
             if score < 5 and dimension in dimension_to_focus:
                 focus_areas.append(dimension_to_focus[dimension])
-        
+
         # If no weak areas, focus on top performers for leverage
         if not focus_areas:
             sorted_dims = sorted(dimension_scores.items(), key=lambda x: x[1], reverse=True)
             for dimension, _ in sorted_dims[:3]:
                 if dimension in dimension_to_focus:
                     focus_areas.append(dimension_to_focus[dimension])
-        
+
         return focus_areas
-    
+
     def _categorize_risk_tolerance(self, risk_score: float) -> str:
         """
         Categorize risk tolerance level
         
         Args:
             risk_score: Risk tolerance score (0-10)
-            
+        
         Returns:
             Category: Low, Medium, High, Very High
         """
@@ -315,20 +439,20 @@ class UserProfileManager:
             return "Medium"
         else:
             return "Low"
-    
+
     def _calculate_completeness(self, evaluation_result: Dict) -> float:
         """
         Calculate profile completeness percentage
         
         Args:
             evaluation_result: Evaluation result
-            
+        
         Returns:
             Completeness percentage (0-100)
         """
         total_fields = 0
         filled_fields = 0
-        
+
         # Check key fields
         fields_to_check = [
             'dimension_scores',
@@ -339,7 +463,7 @@ class UserProfileManager:
             'detailed_insights',
             'recommendations'
         ]
-        
+
         for field in fields_to_check:
             total_fields += 1
             value = evaluation_result.get(field)
@@ -348,7 +472,7 @@ class UserProfileManager:
                     filled_fields += 1
                 elif isinstance(value, str) and value.strip():
                     filled_fields += 1
-        
+
         completeness = (filled_fields / total_fields) * 100
         return round(completeness, 1)
 
@@ -363,4 +487,3 @@ def get_user_profile_manager() -> UserProfileManager:
     if _profile_manager_instance is None:
         _profile_manager_instance = UserProfileManager()
     return _profile_manager_instance
-
